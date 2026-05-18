@@ -1461,7 +1461,7 @@ function PresPhase(props: PresProps) {
               );
             })}
           </div>
-          {!isPresenter && (
+          {!isPresenter && !isHelper && (
             <div className="pt-1">
               <input type="range" min={-10} max={10} step={1} value={myScore}
                 onChange={(e) => onSlider(Number(e.target.value))}
@@ -1474,6 +1474,10 @@ function PresPhase(props: PresProps) {
           {isPresenter && (
             <div className="text-[11px] text-center text-muted-foreground">Te prezentálsz — nézd a csúszkákat!</div>
           )}
+          {isHelper && !isPresenter && (
+            <div className="text-[11px] text-center text-muted-foreground">🎛️ Te a SEGÉD vagy — nem értékelheted, te csak támogatsz!</div>
+          )}
+
         </div>
 
         {isPresenter && (
