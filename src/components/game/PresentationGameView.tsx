@@ -860,46 +860,186 @@ function SuitAvatar({ player, label, color = '#1a1f2e' }: { player?: Player; lab
 
 function IntroCurtain({ presenter, helper, title, untilMs }: { presenter?: Player; helper?: Player; title: string; untilMs: number }) {
   const [left, setLeft] = useState(Math.max(0, untilMs - Date.now()));
+  // sequence:
+  //   0-2200ms   : helper battle card
+  //   2200-4400  : presenter battle card
+  //   4400-6400  : VS / both cards
+  //   6400-8200  : title slam
+  const elapsed = INTRO_MS - left;
+  const stage =
+    elapsed < 2200 ? 'helper' :
+    elapsed < 4400 ? 'presenter' :
+    elapsed < 6400 ? 'vs' :
+    'title';
+
   useEffect(() => {
-    const id = setInterval(() => setLeft(Math.max(0, untilMs - Date.now())), 100);
+    const id = setInterval(() => setLeft(Math.max(0, untilMs - Date.now())), 80);
     return () => clearInterval(id);
   }, [untilMs]);
+
+  // SFX timeline (fire only once)
+  const firedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const t0 = untilMs - INTRO_MS;
+    const sched = (key: string, at: number, fn: () => void) => {
+      const delay = t0 + at - Date.now();
+      if (delay < -100 || firedRef.current.has(key)) return;
+      firedRef.current.add(key);
+      setTimeout(fn, Math.max(0, delay));
+    };
+    sched('helper-swoosh', 100, () => { playSwoosh(); });
+    sched('helper-impact', 900, () => { playImpact(); });
+    sched('pres-swoosh', 2300, () => { playSwoosh(); });
+    sched('pres-impact', 3100, () => { playImpact(); playStingChord(); });
+    sched('riser', 4500, () => { playRiser(); });
+    sched('title-impact', 6500, () => { playImpact(); fireConfetti(40); });
+    sched('title-magic', 6900, () => { playMagic(); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-gradient-to-b from-[#0a0612] via-[#120821] to-[#06030c]">
-      {/* stage floor */}
-      <div className="absolute bottom-0 left-0 right-0 h-1/3"
-        style={{ background: 'linear-gradient(180deg, #2a1b0a 0%, #120a04 100%)' }} />
-      {/* spotlights */}
-      <div className="absolute top-0 left-1/4 w-[60%] h-full animate-spotlight"
-        style={{ background: 'radial-gradient(ellipse at top, rgba(255,255,200,0.35), transparent 60%)' }} />
-      <div className="absolute top-0 right-1/4 w-[60%] h-full animate-spotlight"
-        style={{ background: 'radial-gradient(ellipse at top, rgba(255,200,255,0.3), transparent 60%)', animationDelay: '0.6s' }} />
+      {/* parallax grid */}
+      <div className="absolute inset-0 opacity-30"
+        style={{
+          backgroundImage:
+            'linear-gradient(hsl(var(--neon-cyan) / 0.25) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--neon-cyan) / 0.25) 1px, transparent 1px)',
+          backgroundSize: '60px 60px',
+          maskImage: 'radial-gradient(ellipse at center, black 30%, transparent 75%)',
+        }} />
+      {/* radial spotlights */}
+      <div className="absolute inset-0 animate-spotlight"
+        style={{ background: 'radial-gradient(ellipse at center, hsl(var(--neon-magenta) / 0.25), transparent 60%)' }} />
 
-      {/* characters */}
-      <div className="absolute inset-0 flex items-end justify-center gap-10 md:gap-24 pb-32">
-        <div className="text-center">
-          <SuitAvatar player={helper} label="A SEGÉD" color="#16213a" />
-        </div>
-        <div className="text-center">
-          <SuitAvatar player={presenter} label="A PREZENTÁLÓ" color="#2a1638" />
-        </div>
+      {/* stage 1 + 2 + 3: battle cards */}
+      <div className="absolute inset-0 flex items-center justify-center gap-6 md:gap-16 px-4">
+        {/* HELPER CARD */}
+        {(stage === 'helper' || stage === 'vs' || stage === 'title') && (
+          <BattleCard
+            key={`helper-${stage}`}
+            player={helper}
+            role="A SEGÉD"
+            roleSub="támogat, zenét tesz, effekteket dob"
+            accent="#16213a"
+            ringHsl="184 100% 55%"
+            side="left"
+            small={stage === 'title'}
+          />
+        )}
+
+        {/* VS bang during stage vs */}
+        {stage === 'vs' && (
+          <div className="text-7xl md:text-9xl font-black animate-vs-bang"
+            style={{
+              fontFamily: 'Orbitron, sans-serif',
+              color: '#fff',
+              textShadow: '0 0 24px hsl(56 100% 60%), 0 0 60px hsl(300 100% 60%)',
+            }}>
+            VS
+          </div>
+        )}
+
+        {/* PRESENTER CARD */}
+        {(stage === 'presenter' || stage === 'vs' || stage === 'title') && (
+          <BattleCard
+            key={`pres-${stage}`}
+            player={presenter}
+            role="A PREZENTÁLÓ"
+            roleSub="ő ég a reflektorfényben"
+            accent="#2a1638"
+            ringHsl="300 100% 60%"
+            side="right"
+            small={stage === 'title'}
+            crown
+          />
+        )}
       </div>
 
-      {/* title banner */}
-      <div className="absolute top-12 left-1/2 -translate-x-1/2 text-center animate-spring-in">
-        <div className="text-[11px] uppercase tracking-[0.4em] text-primary/80 mb-1">most következik</div>
-        <div className="text-3xl md:text-5xl font-black text-white drop-shadow-[0_0_20px_rgba(0,255,255,0.5)]">
-          "{title}"
+      {/* stage 4: TITLE SLAM */}
+      {stage === 'title' && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center animate-title-slam pointer-events-none">
+          <div className="text-[10px] md:text-xs uppercase tracking-[0.5em] text-primary mb-2">most következik</div>
+          <div className="text-4xl md:text-7xl font-black text-white drop-shadow-[0_0_30px_hsl(184_100%_55%)]"
+            style={{ fontFamily: 'Orbitron, sans-serif' }}>
+            "{title}"
+          </div>
+          <div className="text-xs text-muted-foreground mt-3">felkészülés... {Math.ceil(left / 1000)}s</div>
         </div>
-        <div className="text-xs text-muted-foreground mt-2">{Math.ceil(left / 1000)}s...</div>
-      </div>
+      )}
 
-      {/* curtains overlay (open) */}
+      {/* curtains close-out at the very end */}
       <div className="absolute inset-y-0 left-0 w-1/2 curtain-panel curtain-left z-40" />
       <div className="absolute inset-y-0 right-0 w-1/2 curtain-panel curtain-right z-40" />
     </div>
   );
 }
+
+// Battle card for the intro — Smash-Bros style fighter reveal
+function BattleCard({
+  player, role, roleSub, accent, ringHsl, side, small, crown,
+}: {
+  player?: Player; role: string; roleSub: string; accent: string;
+  ringHsl: string; side: 'left' | 'right'; small?: boolean; crown?: boolean;
+}) {
+  const av = player ? getAvatarDisplay(player.avatar) : { emoji: '👤' };
+  const enterClass = side === 'left' ? 'animate-battle-in-left' : 'animate-battle-in-right';
+  const scale = small ? 'scale-75 md:scale-90' : 'scale-100';
+  return (
+    <div className={`${enterClass} ${scale} transition-transform duration-500`}>
+      <div className="relative w-[260px] md:w-[320px] rounded-2xl overflow-hidden"
+        style={{
+          background: `linear-gradient(160deg, ${accent} 0%, #06030c 100%)`,
+          border: `3px solid hsl(${ringHsl})`,
+          boxShadow: `0 0 40px hsl(${ringHsl} / 0.7), 0 0 80px hsl(${ringHsl} / 0.35), inset 0 0 30px hsl(${ringHsl} / 0.25)`,
+        }}>
+        {/* scan line */}
+        <div className="battle-scan-line" />
+        {/* corner cuts */}
+        <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2" style={{ borderColor: `hsl(${ringHsl})` }} />
+        <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2" style={{ borderColor: `hsl(${ringHsl})` }} />
+        <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2" style={{ borderColor: `hsl(${ringHsl})` }} />
+        <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2" style={{ borderColor: `hsl(${ringHsl})` }} />
+
+        {/* role banner */}
+        <div className="text-center py-2 px-3"
+          style={{
+            background: `linear-gradient(90deg, transparent, hsl(${ringHsl} / 0.35), transparent)`,
+            borderBottom: `1px solid hsl(${ringHsl} / 0.5)`,
+          }}>
+          <div className="text-[10px] md:text-xs uppercase tracking-[0.4em] font-black"
+            style={{ color: `hsl(${ringHsl})`, textShadow: `0 0 10px hsl(${ringHsl})`, fontFamily: 'Orbitron, sans-serif' }}>
+            {role}
+          </div>
+        </div>
+
+        {/* avatar */}
+        <div className="relative flex items-center justify-center py-6">
+          {crown && <div className="absolute -top-1 text-4xl animate-crown z-10">👑</div>}
+          <div className="absolute inset-0 animate-pulse-glow rounded-full m-auto w-40 h-40" />
+          <div className="relative w-36 h-36 md:w-44 md:h-44 rounded-full overflow-hidden flex items-center justify-center text-6xl bg-muted"
+            style={{
+              border: `4px solid hsl(${ringHsl})`,
+              boxShadow: `0 0 30px hsl(${ringHsl} / 0.8), inset 0 0 24px hsl(${ringHsl} / 0.4)`,
+            }}>
+            {av.src ? <img src={av.src} alt="" className="w-full h-full object-cover" /> : <span>{av.emoji}</span>}
+          </div>
+        </div>
+
+        {/* name */}
+        <div className="text-center px-3 pb-4">
+          <div className="text-2xl md:text-3xl font-black text-white truncate" style={{ fontFamily: 'Orbitron, sans-serif', textShadow: '0 2px 8px rgba(0,0,0,0.9)' }}>
+            {player?.username || '?'}
+          </div>
+          <div className="text-[10px] md:text-xs uppercase tracking-widest mt-1 opacity-80"
+            style={{ color: `hsl(${ringHsl})` }}>
+            {roleSub}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 // =================================================================
 //                        SCORE GRAPH
