@@ -4,6 +4,7 @@ import { Player, GameSettings, speakHungarian } from '@/lib/gameTypes';
 import {
   playClick, playNotification, playPop, playWhoosh, playApplause,
   playSlideChange, fireConfetti, playMagic,
+  playSwoosh, playImpact, playRiser, playDrumroll, playStingChord, playTransition,
 } from '@/lib/sounds';
 import {
   presAudio, PRES_MUSIC, PRES_SFX, PRESET_IMAGES, parseYouTubeId,
