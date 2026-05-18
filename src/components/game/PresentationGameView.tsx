@@ -19,7 +19,7 @@ interface Props {
 
 const SLIDE_EMOJIS = ['🦒','🚀','🎩','🐉','🍕','🌈','🦄','💻','📈','🧠','🪐','🐙','🍩','🎲','💡','🦖','🎤','🪩','🧙','🥑','🐢','🍔','🛸','🔥','💎','🌵'];
 
-type Phase = 'intro' | 'collect' | 'build' | 'presIntro' | 'pres' | 'notes' | 'rate' | 'recap';
+type Phase = 'intro' | 'collect' | 'build' | 'presIntro' | 'pres' | 'notes' | 'notesReveal' | 'rate' | 'recap';
 
 type Slide = {
   emoji: string;
@@ -41,7 +41,9 @@ type Deck = {
 
 type Stroke = { from: string; color: string; w: number; pts: { x: number; y: number }[] };
 type ScoreSample = { t: number; avg: number };
-const INTRO_MS = 4800;
+// total length of the battle-card intro (helper card → presenter card → title slam)
+const INTRO_MS = 8200;
+
 
 // ============= COMPONENT =============
 export default function PresentationGameView({ code, players, playerId, username, isHost, settings, onFinish }: Props) {
