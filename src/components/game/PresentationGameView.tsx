@@ -4,6 +4,7 @@ import { Player, GameSettings, speakHungarian } from '@/lib/gameTypes';
 import {
   playClick, playNotification, playPop, playWhoosh, playApplause,
   playSlideChange, fireConfetti, playMagic,
+  playSwoosh, playImpact, playRiser, playDrumroll, playStingChord, playTransition,
 } from '@/lib/sounds';
 import {
   presAudio, PRES_MUSIC, PRES_SFX, PRESET_IMAGES, parseYouTubeId,
@@ -18,7 +19,7 @@ interface Props {
 
 const SLIDE_EMOJIS = ['🦒','🚀','🎩','🐉','🍕','🌈','🦄','💻','📈','🧠','🪐','🐙','🍩','🎲','💡','🦖','🎤','🪩','🧙','🥑','🐢','🍔','🛸','🔥','💎','🌵'];
 
-type Phase = 'intro' | 'collect' | 'build' | 'presIntro' | 'pres' | 'notes' | 'rate' | 'recap';
+type Phase = 'intro' | 'collect' | 'build' | 'presIntro' | 'pres' | 'notes' | 'notesReveal' | 'rate' | 'recap';
 
 type Slide = {
   emoji: string;
@@ -40,7 +41,9 @@ type Deck = {
 
 type Stroke = { from: string; color: string; w: number; pts: { x: number; y: number }[] };
 type ScoreSample = { t: number; avg: number };
-const INTRO_MS = 4800;
+// total length of the battle-card intro (helper card → presenter card → title slam)
+const INTRO_MS = 8200;
+
 
 // ============= COMPONENT =============
 export default function PresentationGameView({ code, players, playerId, username, isHost, settings, onFinish }: Props) {
@@ -249,12 +252,24 @@ export default function PresentationGameView({ code, players, playerId, username
       });
       setSubmittedNotes((s) => new Set([...Array.from(s), payload.fromId]));
     });
+    ch.on('broadcast', { event: 'pres:notesReveal' }, ({ payload }) => {
+      // epic reveal of all notes for current presenter
+      if (payload?.presenterId && payload?.notes) {
+        setNotes((all) => ({ ...all, [payload.presenterId]: payload.notes }));
+      }
+      setPhase('notesReveal');
+      playRiser();
+      setTimeout(() => playDrumroll(1.4), 200);
+      setTimeout(() => { playImpact(); playStingChord(); fireConfetti(60); }, 1600);
+    });
     ch.on('broadcast', { event: 'pres:rate' }, ({ payload }) => {
       setPhase('rate');
       setPresenterIdx(payload.idx);
       setMyRating(0);
       setRatingSubmitters(new Set());
+      playTransition();
     });
+
     ch.on('broadcast', { event: 'rating' }, ({ payload }) => {
       setRatingList((r) => {
         const u = { ...r, [payload.helperId]: [...(r[payload.helperId] || []), payload.stars] };
@@ -359,7 +374,8 @@ export default function PresentationGameView({ code, players, playerId, username
     if (phase !== 'pres' || !isHost || !presenterId) return;
     const startedAt = presenterStartedAt || Date.now();
     const id = window.setInterval(() => {
-      const audience = players.filter((p) => p.player_id !== presenterId);
+      const helperIdNow = decksRef.current[presenterId]?.helperId;
+      const audience = players.filter((p) => p.player_id !== presenterId && p.player_id !== helperIdNow);
       if (audience.length === 0) return;
       const sum = audience.reduce((acc, p) => acc + (liveScoresRef.current[p.player_id] || 0), 0);
       const avg = sum / audience.length;
@@ -541,13 +557,28 @@ export default function PresentationGameView({ code, players, playerId, username
   useEffect(() => {
     if (phase !== 'notes' || !isHost) return;
     if (submittedNotes.size >= players.length) {
-      const t = setTimeout(() => {
+      // 1) epic reveal first
+      const allNotes = notesRef.current[presenterId] || [];
+      const t1 = setTimeout(() => {
+        channelRef.current?.send({
+          type: 'broadcast', event: 'pres:notesReveal',
+          payload: { presenterId, notes: allNotes },
+        });
+        setPhase('notesReveal');
+        playRiser();
+        setTimeout(() => playDrumroll(1.4), 200);
+        setTimeout(() => { playImpact(); playStingChord(); fireConfetti(60); }, 1600);
+      }, 500);
+      // 2) then advance to rating
+      const t2 = setTimeout(() => {
         channelRef.current?.send({ type: 'broadcast', event: 'pres:rate', payload: { idx: presenterIdx } });
         setPhase('rate'); setMyRating(0); setRatingSubmitters(new Set());
-      }, 600);
-      return () => clearTimeout(t);
+        playTransition();
+      }, 7500);
+      return () => { clearTimeout(t1); clearTimeout(t2); };
     }
-  }, [submittedNotes, phase, isHost, presenterIdx, players.length]);
+  }, [submittedNotes, phase, isHost, presenterIdx, presenterId, players.length]);
+
 
   function submitRating(stars: number) {
     if (myRating > 0) return;
@@ -670,7 +701,7 @@ export default function PresentationGameView({ code, players, playerId, username
             presentedTitle={presentedTitle}
             presenter={presenter}
             helper={helperPlayer}
-            audience={players.filter((p) => p.player_id !== presenterId)}
+            audience={players.filter((p) => p.player_id !== presenterId && p.player_id !== currentDeck?.helperId)}
             liveScores={liveScores}
             myScore={myScore}
             isPresenter={isPresenter}
@@ -697,7 +728,7 @@ export default function PresentationGameView({ code, players, playerId, username
     const mineSent = submittedNotes.has(playerId);
     const series = scoreSeries[presenterId] || [];
     return (
-      <div className="max-w-3xl mx-auto p-4 space-y-3">
+      <div className="max-w-3xl mx-auto p-4 space-y-3 animate-phase-in">
         <div className="game-card ios-glass text-center">
           <p className="text-xs text-muted-foreground">prezentáció vége</p>
           <p className="text-xl font-bold">{presenter?.username} — "{presentedTitle}"</p>
@@ -706,28 +737,71 @@ export default function PresentationGameView({ code, players, playerId, username
           <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">📈 Hangulat grafikon (csúszkák átlaga)</div>
           <ScoreGraph series={series} />
         </div>
-        <h2 className="text-xl font-bold text-center">📝 Tűzd ki a jegyzeted</h2>
+        <h2 className="text-xl font-bold text-center">📝 Írd meg a titkos jegyzeted</h2>
+        <p className="text-xs text-center text-muted-foreground">A jegyzeteket csak a végén, egy epikus körben láthatja mindenki ✨</p>
         {!mineSent ? (
           <>
             <textarea className="game-input min-h-[90px] text-base"
               value={noteInput} onChange={(e) => setNoteInput(e.target.value)}
               placeholder="Vicces visszajelzés? Kérdés? Bók?" />
-            <button className="game-btn-primary w-full" onClick={submitNote}>📌 Tűzd ki</button>
+            <button className="game-btn-primary w-full" onClick={submitNote}>📌 Lepecsételés</button>
           </>
         ) : (
-          <div className="game-card text-center animate-zoom-in">✅ Kitűzve. Várakozás a többiekre...</div>
+          <div className="game-card text-center animate-zoom-in">
+            <div className="text-4xl mb-1">🔒</div>
+            ✅ Pecsételve. Várakozás a többiekre...
+          </div>
         )}
-        <div className="text-xs text-muted-foreground text-center">Kitűzve: {submittedNotes.size}/{players.length}</div>
-        <NotesBoard notes={notes[presenterId] || []} />
+        <div className="text-xs text-muted-foreground text-center">Lepecsételve: {submittedNotes.size}/{players.length}</div>
+        {/* Notes hidden until reveal phase */}
         {isHost && (
           <button className="game-btn bg-card text-xs py-2 w-full"
-            onClick={() => { channelRef.current?.send({ type: 'broadcast', event: 'pres:rate', payload: { idx: presenterIdx } }); setPhase('rate'); }}>
-            ⏭️ Tovább értékelésre
+            onClick={() => {
+              const allNotes = notesRef.current[presenterId] || [];
+              channelRef.current?.send({ type: 'broadcast', event: 'pres:notesReveal', payload: { presenterId, notes: allNotes } });
+              setPhase('notesReveal');
+              playRiser();
+              setTimeout(() => playDrumroll(1.4), 200);
+              setTimeout(() => { playImpact(); playStingChord(); fireConfetti(60); }, 1600);
+              setTimeout(() => {
+                channelRef.current?.send({ type: 'broadcast', event: 'pres:rate', payload: { idx: presenterIdx } });
+                setPhase('rate');
+              }, 7000);
+            }}>
+            ⏭️ Reveal & tovább értékelésre
           </button>
         )}
       </div>
     );
   }
+
+  if (phase === 'notesReveal') {
+    const list = notes[presenterId] || [];
+    return (
+      <div className="fixed inset-0 z-40 overflow-auto bg-gradient-to-br from-[#1a0010] via-[#0a0612] to-[#06030c] animate-phase-in">
+        <div className="absolute inset-0 opacity-30 animate-spotlight"
+          style={{ background: 'radial-gradient(ellipse at center, hsl(var(--neon-magenta) / 0.4), transparent 60%)' }} />
+        <div className="relative max-w-4xl mx-auto p-6 space-y-4">
+          <div className="text-center animate-title-slam">
+            <div className="text-xs uppercase tracking-[0.5em] text-primary mb-1">titkos jegyzetek</div>
+            <h2 className="text-4xl md:text-6xl font-black text-white drop-shadow-[0_0_20px_hsl(300_100%_60%)]"
+              style={{ fontFamily: 'Orbitron, sans-serif' }}>
+              📜 LELEPLEZÉS
+            </h2>
+            <p className="text-sm text-muted-foreground mt-2">{presenter?.username} — "{presentedTitle}"</p>
+          </div>
+          {list.length === 0 ? (
+            <div className="game-card text-center text-muted-foreground">Nincs jegyzet... 😶</div>
+          ) : (
+            <div className="game-card animate-envelope-fly">
+              <NotesBoard notes={list} />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
 
   if (phase === 'rate') {
     const helperId = currentDeck?.helperId;
@@ -856,46 +930,186 @@ function SuitAvatar({ player, label, color = '#1a1f2e' }: { player?: Player; lab
 
 function IntroCurtain({ presenter, helper, title, untilMs }: { presenter?: Player; helper?: Player; title: string; untilMs: number }) {
   const [left, setLeft] = useState(Math.max(0, untilMs - Date.now()));
+  // sequence:
+  //   0-2200ms   : helper battle card
+  //   2200-4400  : presenter battle card
+  //   4400-6400  : VS / both cards
+  //   6400-8200  : title slam
+  const elapsed = INTRO_MS - left;
+  const stage =
+    elapsed < 2200 ? 'helper' :
+    elapsed < 4400 ? 'presenter' :
+    elapsed < 6400 ? 'vs' :
+    'title';
+
   useEffect(() => {
-    const id = setInterval(() => setLeft(Math.max(0, untilMs - Date.now())), 100);
+    const id = setInterval(() => setLeft(Math.max(0, untilMs - Date.now())), 80);
     return () => clearInterval(id);
   }, [untilMs]);
+
+  // SFX timeline (fire only once)
+  const firedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const t0 = untilMs - INTRO_MS;
+    const sched = (key: string, at: number, fn: () => void) => {
+      const delay = t0 + at - Date.now();
+      if (delay < -100 || firedRef.current.has(key)) return;
+      firedRef.current.add(key);
+      setTimeout(fn, Math.max(0, delay));
+    };
+    sched('helper-swoosh', 100, () => { playSwoosh(); });
+    sched('helper-impact', 900, () => { playImpact(); });
+    sched('pres-swoosh', 2300, () => { playSwoosh(); });
+    sched('pres-impact', 3100, () => { playImpact(); playStingChord(); });
+    sched('riser', 4500, () => { playRiser(); });
+    sched('title-impact', 6500, () => { playImpact(); fireConfetti(40); });
+    sched('title-magic', 6900, () => { playMagic(); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-gradient-to-b from-[#0a0612] via-[#120821] to-[#06030c]">
-      {/* stage floor */}
-      <div className="absolute bottom-0 left-0 right-0 h-1/3"
-        style={{ background: 'linear-gradient(180deg, #2a1b0a 0%, #120a04 100%)' }} />
-      {/* spotlights */}
-      <div className="absolute top-0 left-1/4 w-[60%] h-full animate-spotlight"
-        style={{ background: 'radial-gradient(ellipse at top, rgba(255,255,200,0.35), transparent 60%)' }} />
-      <div className="absolute top-0 right-1/4 w-[60%] h-full animate-spotlight"
-        style={{ background: 'radial-gradient(ellipse at top, rgba(255,200,255,0.3), transparent 60%)', animationDelay: '0.6s' }} />
+      {/* parallax grid */}
+      <div className="absolute inset-0 opacity-30"
+        style={{
+          backgroundImage:
+            'linear-gradient(hsl(var(--neon-cyan) / 0.25) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--neon-cyan) / 0.25) 1px, transparent 1px)',
+          backgroundSize: '60px 60px',
+          maskImage: 'radial-gradient(ellipse at center, black 30%, transparent 75%)',
+        }} />
+      {/* radial spotlights */}
+      <div className="absolute inset-0 animate-spotlight"
+        style={{ background: 'radial-gradient(ellipse at center, hsl(var(--neon-magenta) / 0.25), transparent 60%)' }} />
 
-      {/* characters */}
-      <div className="absolute inset-0 flex items-end justify-center gap-10 md:gap-24 pb-32">
-        <div className="text-center">
-          <SuitAvatar player={helper} label="A SEGÉD" color="#16213a" />
-        </div>
-        <div className="text-center">
-          <SuitAvatar player={presenter} label="A PREZENTÁLÓ" color="#2a1638" />
-        </div>
+      {/* stage 1 + 2 + 3: battle cards */}
+      <div className="absolute inset-0 flex items-center justify-center gap-6 md:gap-16 px-4">
+        {/* HELPER CARD */}
+        {(stage === 'helper' || stage === 'vs' || stage === 'title') && (
+          <BattleCard
+            key={`helper-${stage}`}
+            player={helper}
+            role="A SEGÉD"
+            roleSub="támogat, zenét tesz, effekteket dob"
+            accent="#16213a"
+            ringHsl="184 100% 55%"
+            side="left"
+            small={stage === 'title'}
+          />
+        )}
+
+        {/* VS bang during stage vs */}
+        {stage === 'vs' && (
+          <div className="text-7xl md:text-9xl font-black animate-vs-bang"
+            style={{
+              fontFamily: 'Orbitron, sans-serif',
+              color: '#fff',
+              textShadow: '0 0 24px hsl(56 100% 60%), 0 0 60px hsl(300 100% 60%)',
+            }}>
+            VS
+          </div>
+        )}
+
+        {/* PRESENTER CARD */}
+        {(stage === 'presenter' || stage === 'vs' || stage === 'title') && (
+          <BattleCard
+            key={`pres-${stage}`}
+            player={presenter}
+            role="A PREZENTÁLÓ"
+            roleSub="ő ég a reflektorfényben"
+            accent="#2a1638"
+            ringHsl="300 100% 60%"
+            side="right"
+            small={stage === 'title'}
+            crown
+          />
+        )}
       </div>
 
-      {/* title banner */}
-      <div className="absolute top-12 left-1/2 -translate-x-1/2 text-center animate-spring-in">
-        <div className="text-[11px] uppercase tracking-[0.4em] text-primary/80 mb-1">most következik</div>
-        <div className="text-3xl md:text-5xl font-black text-white drop-shadow-[0_0_20px_rgba(0,255,255,0.5)]">
-          "{title}"
+      {/* stage 4: TITLE SLAM */}
+      {stage === 'title' && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center animate-title-slam pointer-events-none">
+          <div className="text-[10px] md:text-xs uppercase tracking-[0.5em] text-primary mb-2">most következik</div>
+          <div className="text-4xl md:text-7xl font-black text-white drop-shadow-[0_0_30px_hsl(184_100%_55%)]"
+            style={{ fontFamily: 'Orbitron, sans-serif' }}>
+            "{title}"
+          </div>
+          <div className="text-xs text-muted-foreground mt-3">felkészülés... {Math.ceil(left / 1000)}s</div>
         </div>
-        <div className="text-xs text-muted-foreground mt-2">{Math.ceil(left / 1000)}s...</div>
-      </div>
+      )}
 
-      {/* curtains overlay (open) */}
+      {/* curtains close-out at the very end */}
       <div className="absolute inset-y-0 left-0 w-1/2 curtain-panel curtain-left z-40" />
       <div className="absolute inset-y-0 right-0 w-1/2 curtain-panel curtain-right z-40" />
     </div>
   );
 }
+
+// Battle card for the intro — Smash-Bros style fighter reveal
+function BattleCard({
+  player, role, roleSub, accent, ringHsl, side, small, crown,
+}: {
+  player?: Player; role: string; roleSub: string; accent: string;
+  ringHsl: string; side: 'left' | 'right'; small?: boolean; crown?: boolean;
+}) {
+  const av = player ? getAvatarDisplay(player.avatar) : { emoji: '👤' };
+  const enterClass = side === 'left' ? 'animate-battle-in-left' : 'animate-battle-in-right';
+  const scale = small ? 'scale-75 md:scale-90' : 'scale-100';
+  return (
+    <div className={`${enterClass} ${scale} transition-transform duration-500`}>
+      <div className="relative w-[260px] md:w-[320px] rounded-2xl overflow-hidden"
+        style={{
+          background: `linear-gradient(160deg, ${accent} 0%, #06030c 100%)`,
+          border: `3px solid hsl(${ringHsl})`,
+          boxShadow: `0 0 40px hsl(${ringHsl} / 0.7), 0 0 80px hsl(${ringHsl} / 0.35), inset 0 0 30px hsl(${ringHsl} / 0.25)`,
+        }}>
+        {/* scan line */}
+        <div className="battle-scan-line" />
+        {/* corner cuts */}
+        <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2" style={{ borderColor: `hsl(${ringHsl})` }} />
+        <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2" style={{ borderColor: `hsl(${ringHsl})` }} />
+        <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2" style={{ borderColor: `hsl(${ringHsl})` }} />
+        <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2" style={{ borderColor: `hsl(${ringHsl})` }} />
+
+        {/* role banner */}
+        <div className="text-center py-2 px-3"
+          style={{
+            background: `linear-gradient(90deg, transparent, hsl(${ringHsl} / 0.35), transparent)`,
+            borderBottom: `1px solid hsl(${ringHsl} / 0.5)`,
+          }}>
+          <div className="text-[10px] md:text-xs uppercase tracking-[0.4em] font-black"
+            style={{ color: `hsl(${ringHsl})`, textShadow: `0 0 10px hsl(${ringHsl})`, fontFamily: 'Orbitron, sans-serif' }}>
+            {role}
+          </div>
+        </div>
+
+        {/* avatar */}
+        <div className="relative flex items-center justify-center py-6">
+          {crown && <div className="absolute -top-1 text-4xl animate-crown z-10">👑</div>}
+          <div className="absolute inset-0 animate-pulse-glow rounded-full m-auto w-40 h-40" />
+          <div className="relative w-36 h-36 md:w-44 md:h-44 rounded-full overflow-hidden flex items-center justify-center text-6xl bg-muted"
+            style={{
+              border: `4px solid hsl(${ringHsl})`,
+              boxShadow: `0 0 30px hsl(${ringHsl} / 0.8), inset 0 0 24px hsl(${ringHsl} / 0.4)`,
+            }}>
+            {av.src ? <img src={av.src} alt="" className="w-full h-full object-cover" /> : <span>{av.emoji}</span>}
+          </div>
+        </div>
+
+        {/* name */}
+        <div className="text-center px-3 pb-4">
+          <div className="text-2xl md:text-3xl font-black text-white truncate" style={{ fontFamily: 'Orbitron, sans-serif', textShadow: '0 2px 8px rgba(0,0,0,0.9)' }}>
+            {player?.username || '?'}
+          </div>
+          <div className="text-[10px] md:text-xs uppercase tracking-widest mt-1 opacity-80"
+            style={{ color: `hsl(${ringHsl})` }}>
+            {roleSub}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 // =================================================================
 //                        SCORE GRAPH
@@ -955,7 +1169,7 @@ function NotesBoard({ notes }: { notes: { from: string; text: string }[] }) {
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {notes.map((n, i) => (
           <div key={i}
-            className="relative p-3 text-[#222] shadow-lg animate-pin-drop"
+            className="relative p-3 text-[#222] shadow-lg animate-note-burst"
             style={{
               background: colors[i % colors.length],
               ['--pin-rot' as any]: `${rotations[i % rotations.length]}deg`,
@@ -1458,7 +1672,7 @@ function PresPhase(props: PresProps) {
               );
             })}
           </div>
-          {!isPresenter && (
+          {!isPresenter && !isHelper && (
             <div className="pt-1">
               <input type="range" min={-10} max={10} step={1} value={myScore}
                 onChange={(e) => onSlider(Number(e.target.value))}
@@ -1471,6 +1685,10 @@ function PresPhase(props: PresProps) {
           {isPresenter && (
             <div className="text-[11px] text-center text-muted-foreground">Te prezentálsz — nézd a csúszkákat!</div>
           )}
+          {isHelper && !isPresenter && (
+            <div className="text-[11px] text-center text-muted-foreground">🎛️ Te a SEGÉD vagy — nem értékelheted, te csak támogatsz!</div>
+          )}
+
         </div>
 
         {isPresenter && (
