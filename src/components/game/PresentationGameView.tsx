@@ -252,12 +252,24 @@ export default function PresentationGameView({ code, players, playerId, username
       });
       setSubmittedNotes((s) => new Set([...Array.from(s), payload.fromId]));
     });
+    ch.on('broadcast', { event: 'pres:notesReveal' }, ({ payload }) => {
+      // epic reveal of all notes for current presenter
+      if (payload?.presenterId && payload?.notes) {
+        setNotes((all) => ({ ...all, [payload.presenterId]: payload.notes }));
+      }
+      setPhase('notesReveal');
+      playRiser();
+      setTimeout(() => playDrumroll(1.4), 200);
+      setTimeout(() => { playImpact(); playStingChord(); fireConfetti(60); }, 1600);
+    });
     ch.on('broadcast', { event: 'pres:rate' }, ({ payload }) => {
       setPhase('rate');
       setPresenterIdx(payload.idx);
       setMyRating(0);
       setRatingSubmitters(new Set());
+      playTransition();
     });
+
     ch.on('broadcast', { event: 'rating' }, ({ payload }) => {
       setRatingList((r) => {
         const u = { ...r, [payload.helperId]: [...(r[payload.helperId] || []), payload.stars] };
