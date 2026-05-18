@@ -674,7 +674,7 @@ export default function PresentationGameView({ code, players, playerId, username
             presentedTitle={presentedTitle}
             presenter={presenter}
             helper={helperPlayer}
-            audience={players.filter((p) => p.player_id !== presenterId)}
+            audience={players.filter((p) => p.player_id !== presenterId && p.player_id !== currentDeck?.helperId)}
             liveScores={liveScores}
             myScore={myScore}
             isPresenter={isPresenter}
