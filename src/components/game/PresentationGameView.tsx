@@ -1169,7 +1169,7 @@ function NotesBoard({ notes }: { notes: { from: string; text: string }[] }) {
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {notes.map((n, i) => (
           <div key={i}
-            className="relative p-3 text-[#222] shadow-lg animate-pin-drop"
+            className="relative p-3 text-[#222] shadow-lg animate-note-burst"
             style={{
               background: colors[i % colors.length],
               ['--pin-rot' as any]: `${rotations[i % rotations.length]}deg`,
