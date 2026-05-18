@@ -557,13 +557,28 @@ export default function PresentationGameView({ code, players, playerId, username
   useEffect(() => {
     if (phase !== 'notes' || !isHost) return;
     if (submittedNotes.size >= players.length) {
-      const t = setTimeout(() => {
+      // 1) epic reveal first
+      const allNotes = notesRef.current[presenterId] || [];
+      const t1 = setTimeout(() => {
+        channelRef.current?.send({
+          type: 'broadcast', event: 'pres:notesReveal',
+          payload: { presenterId, notes: allNotes },
+        });
+        setPhase('notesReveal');
+        playRiser();
+        setTimeout(() => playDrumroll(1.4), 200);
+        setTimeout(() => { playImpact(); playStingChord(); fireConfetti(60); }, 1600);
+      }, 500);
+      // 2) then advance to rating
+      const t2 = setTimeout(() => {
         channelRef.current?.send({ type: 'broadcast', event: 'pres:rate', payload: { idx: presenterIdx } });
         setPhase('rate'); setMyRating(0); setRatingSubmitters(new Set());
-      }, 600);
-      return () => clearTimeout(t);
+        playTransition();
+      }, 7500);
+      return () => { clearTimeout(t1); clearTimeout(t2); };
     }
-  }, [submittedNotes, phase, isHost, presenterIdx, players.length]);
+  }, [submittedNotes, phase, isHost, presenterIdx, presenterId, players.length]);
+
 
   function submitRating(stars: number) {
     if (myRating > 0) return;
