@@ -728,7 +728,7 @@ export default function PresentationGameView({ code, players, playerId, username
     const mineSent = submittedNotes.has(playerId);
     const series = scoreSeries[presenterId] || [];
     return (
-      <div className="max-w-3xl mx-auto p-4 space-y-3">
+      <div className="max-w-3xl mx-auto p-4 space-y-3 animate-phase-in">
         <div className="game-card ios-glass text-center">
           <p className="text-xs text-muted-foreground">prezentáció vége</p>
           <p className="text-xl font-bold">{presenter?.username} — "{presentedTitle}"</p>
@@ -737,28 +737,71 @@ export default function PresentationGameView({ code, players, playerId, username
           <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">📈 Hangulat grafikon (csúszkák átlaga)</div>
           <ScoreGraph series={series} />
         </div>
-        <h2 className="text-xl font-bold text-center">📝 Tűzd ki a jegyzeted</h2>
+        <h2 className="text-xl font-bold text-center">📝 Írd meg a titkos jegyzeted</h2>
+        <p className="text-xs text-center text-muted-foreground">A jegyzeteket csak a végén, egy epikus körben láthatja mindenki ✨</p>
         {!mineSent ? (
           <>
             <textarea className="game-input min-h-[90px] text-base"
               value={noteInput} onChange={(e) => setNoteInput(e.target.value)}
               placeholder="Vicces visszajelzés? Kérdés? Bók?" />
-            <button className="game-btn-primary w-full" onClick={submitNote}>📌 Tűzd ki</button>
+            <button className="game-btn-primary w-full" onClick={submitNote}>📌 Lepecsételés</button>
           </>
         ) : (
-          <div className="game-card text-center animate-zoom-in">✅ Kitűzve. Várakozás a többiekre...</div>
+          <div className="game-card text-center animate-zoom-in">
+            <div className="text-4xl mb-1">🔒</div>
+            ✅ Pecsételve. Várakozás a többiekre...
+          </div>
         )}
-        <div className="text-xs text-muted-foreground text-center">Kitűzve: {submittedNotes.size}/{players.length}</div>
-        <NotesBoard notes={notes[presenterId] || []} />
+        <div className="text-xs text-muted-foreground text-center">Lepecsételve: {submittedNotes.size}/{players.length}</div>
+        {/* Notes hidden until reveal phase */}
         {isHost && (
           <button className="game-btn bg-card text-xs py-2 w-full"
-            onClick={() => { channelRef.current?.send({ type: 'broadcast', event: 'pres:rate', payload: { idx: presenterIdx } }); setPhase('rate'); }}>
-            ⏭️ Tovább értékelésre
+            onClick={() => {
+              const allNotes = notesRef.current[presenterId] || [];
+              channelRef.current?.send({ type: 'broadcast', event: 'pres:notesReveal', payload: { presenterId, notes: allNotes } });
+              setPhase('notesReveal');
+              playRiser();
+              setTimeout(() => playDrumroll(1.4), 200);
+              setTimeout(() => { playImpact(); playStingChord(); fireConfetti(60); }, 1600);
+              setTimeout(() => {
+                channelRef.current?.send({ type: 'broadcast', event: 'pres:rate', payload: { idx: presenterIdx } });
+                setPhase('rate');
+              }, 7000);
+            }}>
+            ⏭️ Reveal & tovább értékelésre
           </button>
         )}
       </div>
     );
   }
+
+  if (phase === 'notesReveal') {
+    const list = notes[presenterId] || [];
+    return (
+      <div className="fixed inset-0 z-40 overflow-auto bg-gradient-to-br from-[#1a0010] via-[#0a0612] to-[#06030c] animate-phase-in">
+        <div className="absolute inset-0 opacity-30 animate-spotlight"
+          style={{ background: 'radial-gradient(ellipse at center, hsl(var(--neon-magenta) / 0.4), transparent 60%)' }} />
+        <div className="relative max-w-4xl mx-auto p-6 space-y-4">
+          <div className="text-center animate-title-slam">
+            <div className="text-xs uppercase tracking-[0.5em] text-primary mb-1">titkos jegyzetek</div>
+            <h2 className="text-4xl md:text-6xl font-black text-white drop-shadow-[0_0_20px_hsl(300_100%_60%)]"
+              style={{ fontFamily: 'Orbitron, sans-serif' }}>
+              📜 LELEPLEZÉS
+            </h2>
+            <p className="text-sm text-muted-foreground mt-2">{presenter?.username} — "{presentedTitle}"</p>
+          </div>
+          {list.length === 0 ? (
+            <div className="game-card text-center text-muted-foreground">Nincs jegyzet... 😶</div>
+          ) : (
+            <div className="game-card animate-envelope-fly">
+              <NotesBoard notes={list} />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
 
   if (phase === 'rate') {
     const helperId = currentDeck?.helperId;
