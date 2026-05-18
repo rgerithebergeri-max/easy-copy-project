@@ -362,7 +362,8 @@ export default function PresentationGameView({ code, players, playerId, username
     if (phase !== 'pres' || !isHost || !presenterId) return;
     const startedAt = presenterStartedAt || Date.now();
     const id = window.setInterval(() => {
-      const audience = players.filter((p) => p.player_id !== presenterId);
+      const helperIdNow = decksRef.current[presenterId]?.helperId;
+      const audience = players.filter((p) => p.player_id !== presenterId && p.player_id !== helperIdNow);
       if (audience.length === 0) return;
       const sum = audience.reduce((acc, p) => acc + (liveScoresRef.current[p.player_id] || 0), 0);
       const avg = sum / audience.length;
