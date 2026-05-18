@@ -191,6 +191,129 @@ export function playMagic() {
   } catch {}
 }
 
+export function playSwoosh() {
+  // longer dramatic whoosh
+  try {
+    const ctx = getCtx();
+    const len = ctx.sampleRate * 0.6;
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 1.6);
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const filter = ctx.createBiquadFilter(); filter.type = 'bandpass'; filter.Q.value = 0.8;
+    filter.frequency.setValueAtTime(3500, ctx.currentTime);
+    filter.frequency.exponentialRampToValueAtTime(150, ctx.currentTime + 0.6);
+    const g = ctx.createGain(); g.gain.value = 0.18;
+    src.connect(filter); filter.connect(g); g.connect(ctx.destination);
+    src.start(); src.stop(ctx.currentTime + 0.6);
+  } catch {}
+}
+
+export function playImpact() {
+  // boom + low rumble
+  try {
+    const ctx = getCtx();
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(180, ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(35, ctx.currentTime + 0.35);
+    g.gain.setValueAtTime(0.45, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + 0.5);
+    // noise burst
+    const len = ctx.sampleRate * 0.18;
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const ns = ctx.createBufferSource(); ns.buffer = buf;
+    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = 800;
+    const ng = ctx.createGain(); ng.gain.value = 0.3;
+    ns.connect(filt); filt.connect(ng); ng.connect(ctx.destination);
+    ns.start();
+  } catch {}
+}
+
+export function playRiser() {
+  // rising tension sweep
+  try {
+    const ctx = getCtx();
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(120, ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(2400, ctx.currentTime + 1.2);
+    g.gain.setValueAtTime(0.001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.6);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.25);
+    const filter = ctx.createBiquadFilter(); filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(800, ctx.currentTime);
+    filter.frequency.exponentialRampToValueAtTime(6000, ctx.currentTime + 1.2);
+    o.connect(filter); filter.connect(g); g.connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + 1.3);
+  } catch {}
+}
+
+export function playDrumroll(duration = 1.2) {
+  try {
+    const ctx = getCtx();
+    const len = ctx.sampleRate * duration;
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      const env = Math.min(1, i / (ctx.sampleRate * 0.05));
+      d[i] = (Math.random() * 2 - 1) * env * 0.35;
+    }
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const filt = ctx.createBiquadFilter(); filt.type = 'bandpass'; filt.frequency.value = 250; filt.Q.value = 2;
+    const g = ctx.createGain(); g.gain.value = 0.35;
+    src.connect(filt); filt.connect(g); g.connect(ctx.destination);
+    src.start(); src.stop(ctx.currentTime + duration);
+  } catch {}
+}
+
+export function playStingChord() {
+  // dramatic minor chord stab
+  try {
+    const ctx = getCtx();
+    [110, 165, 220, 277].forEach((f) => {
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type = 'sawtooth'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.001, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.7);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(); o.stop(ctx.currentTime + 0.75);
+    });
+  } catch {}
+}
+
+export function playTransition() {
+  // short swooshy phase transition
+  try {
+    const ctx = getCtx();
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(220, ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.25);
+    g.gain.setValueAtTime(0.001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + 0.32);
+    // sparkle layer
+    [1320, 1760, 2200].forEach((f, i) => {
+      const o2 = ctx.createOscillator(); const g2 = ctx.createGain();
+      o2.type = 'triangle'; o2.frequency.value = f;
+      const t = ctx.currentTime + i * 0.04;
+      g2.gain.setValueAtTime(0.001, t);
+      g2.gain.exponentialRampToValueAtTime(0.06, t + 0.02);
+      g2.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+      o2.connect(g2); g2.connect(ctx.destination);
+      o2.start(t); o2.stop(t + 0.22);
+    });
+  } catch {}
+}
+
+
 export function fireConfetti(count = 60) {
   try {
     const colors = ['#ffb800', '#00c853', '#ff4d6d', '#2196f3', '#9c27b0', '#ff9800'];
